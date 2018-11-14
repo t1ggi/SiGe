@@ -1,0 +1,761 @@
+	MODULE MDDYNAM_STW
+	
+
+	USE MDTYPES
+	USE MDCONSTS
+	USE MDBOUNDS,R=>GETR
+	USE MDSTRUCT
+
+
+	PRIVATE::FIND_NEIBRS	
+	PRIVATE::COS_
+	PRIVATE::DCOS_	
+	PRIVATE::DR,D2R
+	PRIVATE::D2COS
+	PRIVATE::D2_H2,D2_H3
+	PRIVATE::STIL_WEB 
+	PUBLIC::GET_DINAM_MATRIX
+
+
+
+	!-------------TYPES--------------
+
+	TYPE T_NBS
+	PRIVATE
+	INTEGER*4,POINTER,DIMENSION(:)::N
+	END TYPE
+	!--------------------------------
+	TYPE T_INDEX
+	PRIVATE
+	REAL I,J
+
+	END TYPE 
+	!--------------------------------
+	TYPE T_DIM2
+
+	PRIVATE
+	TYPE(T_INDEX) IJK
+	TYPE(T_INDEX) JIK
+	TYPE(T_INDEX) IKJ
+
+	END TYPE
+
+	!--------------------------------
+	TYPE T_DIM
+
+	PRIVATE
+	REAL IJK
+	REAL JIK
+	REAL IKJ
+
+	END TYPE
+	!--------------------------------
+
+	TYPE(T_DIM2),PRIVATE:: D_COS(3)
+	TYPE(T_DIM),PRIVATE:: D2_COS(3,3),D2H3(3,3)
+	TYPE(T_NBS),PRIVATE,POINTER,DIMENSION(:)::NBS
+	TYPE(T_STRUCT),PRIVATE::DIN_STR
+	REAL*8,PRIVATE::D2_R(3,3)
+	REAL*8,PRIVATE::D2_F3(3,3)
+	
+      
+	CONTAINS
+	
+     	!--------------------------------------------------------------------------------------------------------------------------
+	REAL*8 FUNCTION COS_(J,I,K)
+
+	INTEGER J,I,K
+
+	REAL*8 R1,R2,R3
+
+	R1 = R(I,J,DIN_STR)
+	R2 = R(I,K,DIN_STR)
+	R3 = R(J,K,DIN_STR)
+
+	COS_ = DBLE((R1**2+R2**2-R3**2)/(2.0*R1*R2))
+
+	END FUNCTION
+	
+      !--------------------------------------------------------------------------------------------------------------------------
+	REAL*8 FUNCTION COS_R(RIJ,RIK,RJK)
+	
+	REAL*8 RIJ,RIK,RJK
+
+	COS_R=DBLE((RIJ**2+RIK**2-RJK**2)/(2.0*RIJ*RIK))
+     
+      END FUNCTION	
+
+	!--------------------------------------------------------------------------------------------------------------------------
+	SUBROUTINE DCOS_(J,I,K)
+
+	INTEGER J,I,K
+	
+      REAL*8 RIJ,RIK,RJK
+	REAL*8 UIJ,UIK,UJK
+	REAL*8 COS_JIK,COS_IJK,COS_IKJ
+	INTEGER*2 M
+	REAL*8 DR_IJMJ,DR_JKMJ
+	 
+
+	RIJ = R(I,J,DIN_STR)
+	RIK = R(I,K,DIN_STR)
+	RJK = R(J,K,DIN_STR)
+	
+      COS_JIK=COS_R(RIJ,RIK,RJK)
+	COS_IJK=COS_R(RIJ,RJK,RIK)
+	COS_IKJ=COS_R(RIK,RJK,RIJ)
+
+	
+      DO M=1,3
+
+	UIJ=U(M,I,J,DIN_STR)
+	UIK=U(M,I,K,DIN_STR)
+	UJK=U(M,J,K,DIN_STR)
+
+	DR_IJMJ=DR(I,J,M,J)
+	DR_JKMJ=DR(J,K,M,J)
+	
+	D_COS(M)%JIK%I=COS_JIK*(UIK/RIK**2+UIJ/RIJ**2)-(UIJ+UIK)/(RIJ*RIK)
+     
+      D_COS(M)%JIK%J=UIK/(RIJ*RIK)-COS_JIK*UIJ/RIJ**2	 
+
+	D_COS(M)%IJK%I=-UJK/(RIJ*RJK)-COS_IJK*UIJ/RIJ**2 
+
+      D_COS(M)%IJK%J=COS_IJK*(DR_IJMJ/RIJ-DR_JKMJ/RJK)+
+	1DR_JKMJ/RIJ-DR_IJMJ/RJK
+
+	D_COS(M)%IKJ%I=(UIK+UIJ)/(RIK*RJK)-COS_IKJ*UIK/RIK**2
+
+	D_COS(M)%IKJ%J=(UJK-UIJ)/(RIK*RJK)-COS_IKJ*UJK/RJK**2
+      
+      END DO
+	 
+	END SUBROUTINE
+
+	!--------------------------------------------------------------------------------------------------------------------------
+	REAL*8 FUNCTION DR(M,N,ALPHA,P)
+
+	INTEGER*2 ALPHA
+	INTEGER M,N,P
+
+	IF(M.GT.0.AND.N.GT.0.AND.P.GT.0.AND.ALPHA.GT.0) THEN
+
+	IF(ALPHA.LT.4) THEN
+
+	DR=U(ALPHA,M,N,DIN_STR)/R(M,N,DIN_STR)*(DLT(N,P)-DLT(M,P))
+
+	ELSE 
+
+	DR = -9.61E+10
+
+	END IF
+
+	ELSE 
+
+	DR = -9.61E+10
+
+	END IF
+	
+	END FUNCTION
+
+	!--------------------------------------------------------------------------------------------------------------------------
+	SUBROUTINE D2R(I,J)
+
+	INTEGER I,J
+	INTEGER*2 M,N
+
+	REAL*8 UMIJ,UNIJ,RIJ
+
+	IF(I.GT.0.AND.J.GT.0) THEN
+
+	RIJ=R(I,J,DIN_STR)
+
+      DO M=1,3
+	DO N=1,3
+
+	UMIJ=U(M,I,J,DIN_STR)
+	UNIJ=U(N,I,J,DIN_STR)
+	!///////////////////////////////////////////////////////////////
+      IF(M.EQ.N) THEN
+
+	D2_R(M,N)=UMIJ*UNIJ/RIJ**3-1.0/RIJ
+
+	ELSE
+
+	D2_R(M,N)=-UMIJ*UNIJ/RIJ**3
+
+	END IF
+
+	END DO
+	END DO
+	!///////////////////////////////////////////////////////////////	
+
+	END IF
+
+	END SUBROUTINE
+
+	!-------------------------------------------------------------------------------------------------------------------------------
+	SUBROUTINE D2COS(J,I,K)
+
+	INTEGER I,J,K
+	
+
+	REAL*8 RIJ,RIK,RJK
+	REAL*8 SJIK1,SJIK2,SJIK3
+	REAL*8 SIJK1,SIJK2,SIJK3,SIJK4
+	REAL*8 SIKJ1,SIKJ2,SIKJ3
+	INTEGER*2 M,N
+	REAL*8 DR_IJMI,DR_IJNJ,DR_IKMI,DR_JKNJ 
+
+	RIJ = R(I,J,DIN_STR)
+	RIK = R(I,K,DIN_STR)
+	RJK = R(J,K,DIN_STR)
+
+	CALL DCOS_(J,I,K)
+	CALL D2R(I,J)
+
+
+	DO M=1,3
+
+	DR_IJMI=DR(I,J,M,I)
+	DR_IKMI=DR(I,K,M,I)
+
+	DO N=1,3
+	
+      DR_IJNJ=DR(I,J,N,J)
+	DR_JKNJ=DR(J,K,N,J)
+
+	!_________________COS_JIK_________________________________________
+	SJIK1=-COS_(J,I,K)*(D2_R(M,N)-DR_IJMI*DR_IJNJ/RIJ)/RIJ
+	SJIK2=D2_R(M,N)/RIK-DR_IJNJ*DR_IKMI/RIJ**2
+	SJIK3=-D_COS(N)%JIK%J*(DR_IJMI/RIJ+DR_IKMI/RIK)
+
+	D2_COS(M,N)%JIK=SJIK1+SJIK2+SJIK3
+
+	!_________________COS_IJK_________________________________________
+      SIJK1=-(RIJ**2*DR_JKNJ-2.*RJK*RIJ*DR_IJNJ)/RJK/RIJ**2*
+	1D_COS(M)%IJK%I
+	SIJK2= D2_R(M,N)*(RIJ**2+RIK**2-RJK**2)
+	SIJK3=-2.*DR_IJMI*(-RIJ*DR_IJNJ-RJK*DR_JKNJ)
+	SIJK4=-2.*RIK*DR_IKMI*DR_IJNJ
+
+!	D2_COS(M,N)%IJK=SIJK1+SIJK2+SIJK3+SIJK4
+      D2_COS(M,N)%IJK=SIJK1+(SIJK2+SIJK3+SIJK4)/(2.0*RJK*RIJ**2)  
+  
+
+	!_________________COS_IKJ_________________________________________
+      SIKJ1=1./RJK*DR_JKNJ*D_COS(M)%IKJ%I
+	SIKJ2=-DR_IKMI*(RIJ*DR_IJNJ+RJK*DR_JKNJ)
+	SIKJ3=RIK*(RIJ*D2_R(M,N)+DR_IJMI*DR_IJNJ)
+
+	D2_COS(M,N)%IKJ=SIKJ1+(SIKJ2+SIKJ3)/(RJK*RIK**2)	 
+	 
+	END DO
+	END DO
+
+	END SUBROUTINE
+
+	!---------------------------------------------------------------------------------------------------------------------------
+	SUBROUTINE FIND_NEIBRS
+
+	INTEGER I,J,IA,JA
+	REAL*8 RR 
+	INTEGER*2 BT
+	INTEGER*4 NUM 
+      
+	ALLOCATE(NBS(SIZE(DIN_STR%ATS)))
+
+     	DO I=1,SIZE(DIN_STR%ATS)-1
+	DO J=I+1,SIZE(DIN_STR%ATS)
+
+	IA = DIN_STR%NUMS(I)%IN
+	JA = DIN_STR%NUMS(J)%IN
+
+	IF(IA.LE.0.OR.JA.LE.0) CALL EXIT(10)	
+
+	RR=R(IA,JA,DIN_STR)
+	BT=GET_BOND_TYPE(IA,JA,DIN_STR%ATS)	
+	RR=RR/STW(BT)%SIG 
+
+	IF(RR.LT.STW(BT)%RA) THEN
+ 	NUM=ADD(NBS(I)%N,JA)
+	NUM=ADD(NBS(J)%N,IA)
+	END IF
+
+	END DO
+	END DO
+
+	END SUBROUTINE
+
+
+	!--------------------------------------------------------------------------------------------------------------------------
+	SUBROUTINE D2H2(I,NEIB,DF2)
+
+	INTEGER I,NEIB
+!	REAL*8,POINTER,DIMENSION(:,:)::DF2
+      REAL*8 DF2(3,3)
+	REAL*8 DRIJ(3),D2RIJ(3,3)
+	REAL*8 DH_UA,FRIJ3
+	REAL*8 RIJB,FRIJ,FRIJ2,SQ,SP,F1,FA,FB,FC
+	REAL*8 F21,F22,F23,FS1,FS2,FS3,FS4		
+	REAL*8 ADEXPIJ
+	INTEGER*2 BT
+	INTEGER*2 M,N
+
+	IF(I.EQ.35.AND.NEIB.EQ.74) THEN
+	  FFFC=12.3
+	END IF
+
+	RIJ =  R(DIN_STR%NUMS(I)%IN,DIN_STR%NUMS(NEIB)%IN,DIN_STR)	
+
+	IF(DIN_STR%NUMS(I)%IN.EQ.76) THEN
+	 FGR = 0.02
+	END IF
+
+	BT=GET_BOND_TYPE(DIN_STR%NUMS(I)%IN,DIN_STR%NUMS(NEIB)%IN,
+	1DIN_STR%ATS)
+
+	RIJB = RIJ/STW(BT)%SIG
+	FRIJ = 1.0/(RIJB-STW(BT)%RA)
+	FRIJ2 = -1.0*FRIJ**2
+	FRIJ3 = -2.0*FRIJ2*FRIJ
+	ADEXPIJ = STW(BT)%A*DEXP(FRIJ)	
+	SQ = RIJB**2
+	SP = RIJB**STW(BT)%Q
+	F1 = STW(BT)%B*(RIJB**(-STW(BT)%P))-RIJB**(-STW(BT)%Q)
+	FA = FRIJ2*F1
+	FB = -STW(BT)%P*STW(BT)%B*RIJB**(-1.0-STW(BT)%P)
+	FC = -STW(BT)%Q*RIJB**(-1.0-STW(BT)%Q)
+
+! 	CALL DR(NUM(I)%IN,NUM(NEIB)%IN,NUM(1)%IN,DRIJ,DRIK,DRKJ,D2RIJ)
+
+	DO M=1,3
+	DRIJ(M)=U(M,DIN_STR%NUMS(NEIB)%IN,DIN_STR%NUMS(I)%IN,DIN_STR)/RIJ
+	END DO
+
+	DO M=1,3
+	DO N=1,3
+
+	D2RIJ(M,N)=-U(M,DIN_STR%NUMS(I)%IN,DIN_STR%NUMS(NEIB)%IN,DIN_STR)*
+	1U(N,DIN_STR%NUMS(I)%IN,DIN_STR%NUMS(NEIB)%IN,DIN_STR)/(RIJ**3) 	
+
+	IF(M.EQ.N) 	D2RIJ(M,N) = -D2RIJ(M,N)-1.0/RIJ
+
+	END DO
+	END DO 	
+
+	 
+	IF(RIJB.GE.STW(BT)%RA) THEN
+
+	DO M=1,3
+	DO N=1,3
+	DF2(M,N)=0.0
+	END DO
+	END DO
+
+	ELSE
+
+	DO M=1,3
+
+	DH_UA = ADEXPIJ*(FA+FB-FC)*DRIJ(M)/STW(BT)%SIG
+
+	DO N=1,3
+
+	F21 = -FRIJ2*DH_UA*	DRIJ(N)/STW(BT)%SIG
+	F22 = ADEXPIJ*(FA+FB-FC)*D2RIJ(M,N)/STW(BT)%SIG
+	FS1 = FRIJ3*F1
+	FS2 = FRIJ2*(FB-FC)
+	FS3 = STW(BT)%B*STW(BT)%P*(STW(BT)%P+1)*RIJB**(-2.0-STW(BT)%P)
+	FS4 = STW(BT)%Q*(STW(BT)%Q+1)*RIJB**(-2.0-STW(BT)%Q)
+	F23 = -ADEXPIJ*DRIJ(M)*(FS1+FS2+FS3-FS4)/STW(BT)%SIG/STW(BT)%SIG
+	1*DRIJ(N)
+	DF2(M,N) = F21+F22+F23
+
+	END DO
+
+	END DO
+
+	END IF
+
+      END SUBROUTINE 
+
+     	!--------------------------------------------------------------------------------------------------------------------------
+	SUBROUTINE D2_H3(I,J,K)
+
+	INTEGER*4 I,J,K
+
+	REAL*8 RIJ_M,RIK_M,RJK_M
+	REAL*8 RIJ_S,RIK_S,RJK_S
+	REAL*8 RIJ_S2,RIK_S2,RJK_S2
+	REAL*8 RIJ_S3,RIK_S3,RJK_S3
+	REAL*8 DEXP_JIK,DEXP_IJK,DEXP_IKJ
+	REAL*8 COS_JIK,COS_IJK,COS_IKJ
+	REAL*8 COS_JIK2,COS_IJK2,COS_IKJ2
+	REAL*8 DHUA1,DHUA2,DHUA3
+	REAL*8 DAH1,DAH2,DAH3
+	REAL*8 F10,F11,F12,F13,F14
+	REAL*8 F21,F22,F23,F24,F25
+	REAL*8 F31,F32,F33
+	REAL*8 DRIJ,DRIJJ,D2RIJ	
+	INTEGER*2 BTIJ,BTIK,BTJK
+	INTEGER*2 AT
+	INTEGER*2 M,N
+
+	AT=GET_ANGLE_TYPE(I,J,K,DIN_STR%ATS)
+
+	BTIJ=GET_BOND_TYPE(I,J,DIN_STR%ATS)
+	BTIK=GET_BOND_TYPE(I,K,DIN_STR%ATS)
+	BTJK=GET_BOND_TYPE(J,K,DIN_STR%ATS)
+
+	RIJ=R(I,J,DIN_STR)
+	RIK=R(I,K,DIN_STR)
+	RJK=R(J,K,DIN_STR)
+
+	!ДЛЯ SIG ТИП СВЯЗИ ИЛИ ТИП УГЛА
+	RIJ_M = RIJ/STW(AT)%SIG - STW(AT)%RA
+	RIK_M = RIK/STW(AT)%SIG - STW(AT)%RA
+	RJK_M = RJK/STW(AT)%SIG - STW(AT)%RA
+
+	RIJ_S=1.0/RIJ_M
+	RIK_S=1.0/RIK_M
+	RJK_S=1.0/RJK_M
+
+	RIJ_S2=-(RIJ_S**2)
+	RIK_S2=-(RIK_S**2)
+	RJK_S2=-(RJK_S**2)
+
+	RIJ_S3=2.0*(RIJ_S**3)
+	RIK_S3=2.0*(RIK_S**3)
+	RJK_S3=2.0*(RJK_S**3)
+
+	COS_JIK = COS_(J,I,K)+1.0/3.0
+	COS_IJK = COS_(I,J,K)+1.0/3.0
+	COS_IKJ = COS_(I,K,J)+1.0/3.0
+
+	COS_JIK2=COS_JIK**2
+	COS_IJK2=COS_IJK**2
+	COS_IKJ2=COS_IKJ**2
+       
+
+	
+	CALL DCOS_(J,I,K)
+	CALL D2COS(J,I,K)
+	CALL D2R(I,J)
+
+	DO M=1,3
+	DO N=1,3
+	D2H3(M,N)%JIK=0.0
+	D2H3(M,N)%IJK=0.0
+	D2H3(M,N)%IKJ=0.0
+	END DO
+	END DO
+
+
+	!_____________________________JIK_________________________________
+	IF((RIJ_S.LT.0.0).AND.(RIK_S.LT.0.0)) THEN
+
+	DEXP_JIK= STW(AT)%LMD*DEXP(STW(AT)%GAM*(RIJ_S+RIK_S))
+
+	DO M=1,3
+
+	F10=STW(AT)%GAM*(RIJ_S2*DR(I,J,M,I)+RIK_S2*DR(I,K,M,I))/
+	1STW(AT)%SIG
+	DHUA1= DEXP_JIK*(F10*COS_JIK2+2.0*COS_JIK*D_COS(M)%JIK%I)	      
+
+      DO N=1,3
+
+	F11= DHUA1*STW(AT)%SIG*RIJ_S2*DR(I,J,N,J)/STW(AT)%SIG
+
+	DRIJJ=DR(I,J,N,J)
+	DRIJ=DR(I,J,M,I)
+	D2RIJ=D2_R(M,N)	
+
+      F12=STW(AT)%GAM*COS_JIK2*(RIJ_S3*DRIJJ*DRIJ/STW(AT)%SIG+
+	1RIJ_S2*D2RIJ)/STW(AT)%SIG	
+
+      F13= F10*2.*COS_JIK*D_COS(N)%JIK%J
+
+	F14= 2.*(D_COS(M)%JIK%I*D_COS(N)%JIK%J+COS_JIK*D2_COS(M,N)%JIK)
+
+	DAH1= F11+ DEXP_JIK*(F12+F13+F14)
+
+	D2H3(M,N)%JIK= DAH1
+
+      END DO
+	END DO 
+
+	END IF
+
+	!______________________________IJK__________________________________
+	IF ((RIJ_S.LT.0.0).AND.(RJK_S.LT.0.0)) THEN
+
+	DEXP_IJK= STW(AT)%LMD*DEXP(STW(AT)%GAM*(RIJ_S+RJK_S))
+	1
+	DO M=1,3
+
+	DRIJ=DR(I,J,M,I)
+
+	DHUA2=(STW(AT)%GAM*RIJ_S2*COS_IJK2*(-DRIJ)/STW(AT)%SIG+2.0
+	1*COS_IJK*D_COS(M)%IJK%I)*DEXP_IJK  
+
+	DO N=1,3
+
+	F21= STW(AT)%GAM*(RIJ_S2*(-DR(I,J,N,J))+RJK_S2*DR(J,K,N,J))*DHUA2/
+	1STW(AT)%SIG
+
+	DRIJJ=DR(I,J,N,J)
+	DRIJ=DR(I,J,M,I)
+
+	F22= 2.0*COS_IJK*STW(AT)%GAM*RIJ_S2*(-DR(I,J,M,I))*D_COS(N)%IJK%J/
+	1STW(AT)%SIG
+	
+	F23= STW(AT)%GAM*COS_IJK2*RIJ_S3*(-DR(I,J,M,I))*(-DR(I,J,N,J))
+	1/STW(AT)%SIG/STW(AT)%SIG
+
+	D2RIJ=D2_R(M,N)
+
+	F24= STW(AT)%GAM*COS_IJK2*RIJ_S2*D2RIJ/STW(AT)%SIG
+
+	F25= 2.0*(D_COS(M)%IJK%I*D_COS(N)%IJK%J+COS_IJK*D2_COS(M,N)%IJK)
+
+	DAH2= F21+ DEXP_IJK*(F22+F23+F24+F25)
+
+	D2H3(M,N)%IJK= DAH2
+
+	END DO
+	END DO
+
+	END IF
+
+	!_______________________________IKJ___________________________________
+	IF ((RIK_S.LT.0.0).AND.(RJK_S.LT.0.0)) THEN
+
+	DEXP_IKJ= STW(AT)%LMD*DEXP(STW(AT)%GAM*(RJK_S+RIK_S))
+
+	DO M=1,3
+
+	DHUA3= DEXP_IKJ*(COS_IKJ2*STW(AT)%GAM*RIK_S2*(-DR(I,K,M,I))/
+	1STW(AT)%SIG+2.0*COS_IKJ*D_COS(M)%IKJ%I)		
+
+	DO N=1,3
+
+	F31= STW(AT)%GAM*DHUA3*RJK_S2*(-DR(J,K,N,J))/STW(AT)%SIG
+
+	F32= STW(AT)%GAM*RIK_S2*(-DR(I,K,M,I))*2.0*COS_IKJ*D_COS(N)%IKJ%J/
+	1STW(AT)%SIG
+
+	F33= 2.0*(COS_IKJ*D2_COS(M,N)%IKJ+D_COS(M)%IKJ%I*D_COS(N)%IKJ%J)
+
+	DAH3= F31+ DEXP_IKJ*(F32+F33)
+
+	D2H3(M,N)%IKJ= DAH3
+
+	END DO
+	END DO
+
+	END IF    
+
+	DO M=1,3
+	DO N=1,3
+	D2_F3(M,N)=D2H3(M,N)%JIK+D2H3(M,N)%IJK+D2H3(M,N)%IKJ
+	END DO
+	END DO
+
+	END SUBROUTINE
+	!--------------------------------------------------------------------------------------------------------------------------
+
+	SUBROUTINE STIL_WEB(I,NEIBR,HS4)
+
+	INTEGER I,NEIBR
+	REAL*8 HS4(3,3)
+
+	REAL*8 DF2(3,3),HS1(3,3),HS2(3,3),HS3(3,3)
+	INTEGER*2 AT
+	INTEGER*4 NI,NJ,NK
+
+	NI=DIN_STR%NUMS(I)%IN
+	NJ=DIN_STR%NUMS(NEIBR)%IN
+
+	IF( I.EQ.76) THEN
+ 	FGR = 0.02
+	END IF
+
+	CALL D2H2(I,NEIBR,DF2)
+
+	DO M=1,3
+	DO N=1,3
+
+	HS1(M,N)=DF2(M,N)
+	HS2(M,N)=0.0
+	HS3(M,N)=0.0
+
+	END DO
+	END DO 
+	
+
+	!///////////////////////////////////////////////////////////
+	DO M=1,SIZE(NBS(I)%N) !DIN_AT(I)%NUM_NEIB  SIZE(DIN_AT(I)%NEIBR)
+
+	IF(NBS(I)%N(M).NE.DIN_STR%NUMS(NEIBR)%IN) THEN 
+
+	CALL D2_H3(NI,NJ,NBS(I)%N(M))
+	
+	NK=NBS(I)%N(M)
+
+	AT=GET_ANGLE_TYPE(NI,NJ,NK,DIN_STR%ATS)
+
+	DO N=1,3
+	DO L=1,3
+	HS2(N,L)=HS2(N,L)+D2_F3(N,L)
+      END DO 
+      END DO
+	 
+	END IF
+
+	END DO 
+	! ///////////////////////////////////////////////////////////
+	DO N=1,3
+	DO L=1,3
+	HS4(N,L)=HS1(N,L)+HS2(N,L)
+	END DO
+      END DO 
+	! ///////////////////////////////////////////////////////////
+	DO N=1,3
+	DO L=1,3
+	HS4(N,L)=HS4(N,L)*STW(AT)%EN/DIN_STR%ATS(NI)%M
+	!1SQRT(DIN_STR%ATS(NI)%M*DIN_STR%ATS(NJ)%M)
+	END DO
+      END DO 
+	
+	END SUBROUTINE	 
+	!--------------------------------------------------------------------------------------------------------------------------
+	SUBROUTINE  GET_STW_DINAM_MATRIX(STRUCT,DIN_MATR)
+
+	TYPE(T_STRUCT) STRUCT
+	REAL*8,POINTER,DIMENSION(:,:)::DIN_MATR 
+	
+	REAL*8 HD(3,3),HS4(3,3)
+ 	INTEGER*4 FLAG,IATOM,AI,AJ,ISOSED
+	INTEGER ALPHA,BETTA
+	INTEGER*4 NATOMS
+
+	
+	I_AT = 1
+	NATOMS=STRUCT%NATOMS
+
+!	IF(SIZE(MATR).GT.0) DEALLOCATE(MATR)
+	ALLOCATE(DIN_MATR(3*NATOMS,3*NATOMS))
+
+!	IF(SIZE(DIN_AT).GT.0) DEALLOCATE(DIN_AT)
+
+	DO I=1,3*NATOMS
+	DO J=1,3*NATOMS
+	DIN_MATR(I,J) = 0.0
+	END DO
+	END DO
+	       
+	DIN_STR=STRUCT
+	CALL FIND_NEIBRS 	
+     
+      IATOM=1 
+	  
+	DO 100 I=1,SIZE(DIN_STR%ATS)
+
+	AI=DIN_STR%NUMS(I)%IN 
+
+	IF (AI.GT.NATOMS) GOTO 100
+
+	DO 105 II=1,3
+	DO 105 JJ=1,3
+105	HD(II,JJ)=0.D0
+
+	ISOSED=1
+	DO 150 J=1,SIZE(DIN_STR%ATS)
+	
+      IF (I.EQ.J) GOTO 149
+	AJ= DIN_STR%NUMS(J)%IN
+
+c	если учитывать вклад в диаг. элемент от граничных атомов, 
+c	которые не входят в дин. матрицу, то 150 заменяем на 145
+
+	IF (AJ.GT.NATOMS) GOTO 150
+
+	FLAG= 0
+	DO 111 JJ=1,SIZE(NBS(I)%N)
+	IF (AJ.EQ.NBS(I)%N(JJ)) THEN
+	FLAG=JJ
+	GOTO 112
+	END IF
+111	CONTINUE
+
+ 
+112   IF (FLAG.GT.0) THEN
+      IF((IATOM.EQ.1.AND.ISOSED.EQ.10).OR.
+	1(IATOM.EQ.10.AND.ISOSED.EQ.1)) THEN
+	ISTRG=28
+	END IF 
+		 
+  !   CALL SIL_STW_NEW(KBULD8, I,J)
+      CALL STIL_WEB(I,J,HS4)
+	
+      DO 120 II=1,3
+	DO 121 JJ=1,3
+	I1=3*(IATOM-1)+II
+	J1=3*(ISOSED-1)+JJ
+      HD(II,JJ)= HD(II,JJ)-HS4(II,JJ)
+	DIN_MATR(I1,J1)=HS4(II,JJ)
+121	CONTINUE
+120	CONTINUE
+
+
+	END IF
+
+149   ISOSED= ISOSED+1
+	GOTO 150
+
+c	учитывает вклад в диагональный элемент от граничных атомов, 
+c	не входящих в дин. матрицу
+145	CONTINUE
+C	WRITE(*,*) '145 CONTINUE'
+	FLAG= 0
+	DO 146 JJ=1,SIZE(NBS(I)%N) 
+	IF (AJ.EQ.NBS(I)%N(JJ)) THEN
+	FLAG=JJ
+	GOTO 147
+	END IF
+146	CONTINUE
+
+147   IF (FLAG.GT.0) THEN
+
+      IF((IATOM.EQ.2.AND.ISOSED.EQ.11).OR.
+	1(IATOM.EQ.11.AND.ISOSED.EQ.2)) THEN
+	ISTRG=28
+	END IF 
+
+    !  CALL SIL_STW_NEW(KBULD8, I,J)
+      CALL STIL_WEB(I,J,HS4)
+      DO 148 II=1,3
+	DO 148 JJ=1,3
+      HD(II,JJ)= HD(II,JJ)-HS4(II,JJ)
+148	CONTINUE
+	END IF
+
+
+150	CONTINUE
+
+	DO 135 II=1,3
+	DO 135 JJ=1,3
+	I1=3*(IATOM-1)+II
+	J1=3*(IATOM-1)+JJ
+	DIN_MATR(I1,J1)= HD(II,JJ)
+135	CONTINUE
+
+	IATOM= IATOM+1
+100	CONTINUE
+ 	
+    ! DEALLOCATE(DIN_AT)
+
+
+	END SUBROUTINE 	
+
+	END MODULE
